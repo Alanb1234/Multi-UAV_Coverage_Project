@@ -2,7 +2,6 @@
 import numpy as np
 import json
 import matplotlib.pyplot as plt
-from collections import defaultdict, deque
 import networkx as nx
 
 class MultiAgentGridEnv:
@@ -102,6 +101,9 @@ class MultiAgentGridEnv:
                 if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size and self.grid[ny, nx] == 0:
                     self.coverage_grid[ny, nx] = 1
 
+    ### ***********
+    ### Reward Calculation
+    ### ***********
 
     def calculate_global_reward(self):
         self.total_area = np.sum(self.coverage_grid > 0)
@@ -199,7 +201,10 @@ class MultiAgentGridEnv:
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size and self.grid[ny, nx] == 0:
                     grid[ny, nx] += 1  # Increment instead of setting to 1
-
+    
+    ### ***********
+    ### Reward Calculation end
+    ### ***********
 
 
     def get_observations(self):

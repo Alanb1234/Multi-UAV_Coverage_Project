@@ -3,7 +3,6 @@ import numpy as np
 import json
 import matplotlib.pyplot as plt
 from collections import defaultdict, deque
-import networkx as nx
 
 class MultiAgentGridEnv:
     def __init__(self, grid_file, coverage_radius, max_steps_per_episode, num_agents, initial_positions, reward_type='global'):
@@ -14,8 +13,18 @@ class MultiAgentGridEnv:
         self.num_agents = num_agents
         self.initial_positions = initial_positions
         self.reward_type = reward_type
-        self.obs_size = self.grid_size * self.grid_size * 3 + 4
-        self.nx = nx
+        
+        # Calculate new obs_size
+        self.obs_size = (
+            2 +  # Agent's own position (x, y)
+            4 +  # Sensor readings
+            self.grid_size * self.grid_size +  # Full coverage grid (flattened)
+            self.grid_size * self.grid_size +  # Full obstacle grid (flattened)
+            1 +  # Current time step
+            1 +  # Total area
+            2 * (self.num_agents - 1)  # Positions of all other agents
+        )
+        
         self.reset()
 
 
@@ -53,6 +62,7 @@ class MultiAgentGridEnv:
         global_reward = self.calculate_global_reward()
         done = self.current_step >= self.max_steps_per_episode
         return self.get_observations(), global_reward, done, actual_actions
+
 
 
     def is_valid_move(self, new_pos, sensor_reading, action, other_new_positions):
@@ -103,77 +113,16 @@ class MultiAgentGridEnv:
                     self.coverage_grid[ny, nx] = 1
 
     def calculate_global_reward(self):
-        self.total_area = np.sum(self.coverage_grid > 0)
-        self.overlap_penalty = self.calculate_overlap()
-        
-        graph = self.build_graph()
-        self.num_components = nx.number_connected_components(graph)
-        
-        if self.num_components == 1:
-            self.connectivity_penalty = 0
-        else:
-            self.connectivity_penalty = (self.num_agents) * (self.num_components - 1) * ((1 + 2*self.coverage_radius)**2)
+        total_area = np.sum(self.coverage_grid > 0)  # Count cells covered by at least one agent
+        overlap_penalty = self.calculate_overlap()
+        num_components = self.count_connected_components()
 
-        self.hole_penalty = self.calculate_hole_penalty(graph)
+        penalty = num_components if num_components == self.num_agents else num_components - 1
+        penalty_score = 2 * penalty * (total_area / self.num_agents)
 
-        reward = 1.25*self.total_area - self.overlap_penalty - self.connectivity_penalty - self.hole_penalty
+        reward = total_area - 0.75* overlap_penalty - penalty_score
         return reward
 
-
-    
-    ### Hole penalty Implementation, using chordless cycles
-    def calculate_hole_penalty(self, graph):
-        chordless_cycles = self.find_chordless_cycles(graph)
-        num_holes = len(chordless_cycles)
-        return num_holes * (self.num_agents * (1 + 2*self.coverage_radius)**2)
-
-
-    def find_chordless_cycles(self, graph):
-        chordless_cycles = []
-        visited_cycles = set()
-        for node in graph.nodes():
-            self._find_cycles_from_node(graph, node, [node], set([node]), chordless_cycles, visited_cycles)
-        return chordless_cycles
-
-    def _find_cycles_from_node(self, graph, start, path, visited, chordless_cycles, visited_cycles):
-        neighbors = set(graph.neighbors(path[-1])) - set(path[1:])
-        for neighbor in neighbors:
-            if neighbor == start and len(path) > 3:
-                cycle = path[:]
-                if self._is_chordless(graph, cycle):
-                    cycle_key = tuple(sorted(cycle))
-                    if cycle_key not in visited_cycles:
-                        chordless_cycles.append(cycle)
-                        visited_cycles.add(cycle_key)
-            elif neighbor not in visited:
-                self._find_cycles_from_node(graph, start, path + [neighbor], visited | {neighbor}, chordless_cycles, visited_cycles)
-
-    def _is_chordless(self, graph, cycle):
-        for i in range(len(cycle)):
-            for j in range(i+2, len(cycle)):
-                if (i != 0 or j != len(cycle)-1) and graph.has_edge(cycle[i], cycle[j]):
-                    return False
-        return True
-
-    def build_graph(self):
-        G = nx.Graph()
-        G.add_nodes_from(range(self.num_agents))
-        for i, pos1 in enumerate(self.agent_positions):
-            for j, pos2 in enumerate(self.agent_positions[i+1:], i+1):
-                if self.areas_overlap(pos1, pos2):
-                    G.add_edge(i, j)
-        return G
-    
-
-    def areas_overlap(self, pos1, pos2):
-        x1, y1 = pos1
-        x2, y2 = pos2
-        return abs(x1 - x2) <= 2 * self.coverage_radius and abs(y1 - y2) <= 2 * self.coverage_radius
-
-
-  
-
-    ### End of hole penalty implementation
 
     
     def calculate_overlap(self):
@@ -183,10 +132,11 @@ class MultiAgentGridEnv:
             self.cover_area_on_grid(pos, temp_grid)
             overlap_grid += temp_grid
         
-        overlap_counts = overlap_grid[overlap_grid > 1] - 1
+        # Calculate weighted overlap
+        overlap_counts = overlap_grid[overlap_grid > 1] - 1  # Subtract 1 to get the number of extra agents in each cell
         weighted_overlap = np.sum(overlap_counts)
-        return weighted_overlap
 
+        return weighted_overlap
 
 
 
@@ -200,19 +150,65 @@ class MultiAgentGridEnv:
 
 
 
+    def count_connected_components(self):
+        graph = self.build_graph()
+        visited = set()
+        components = 0
+        for node in range(self.num_agents):
+            if node not in visited:
+                components += 1
+                self.bfs(node, graph, visited)
+        return components
+
+    
+    def build_graph(self):
+        graph = defaultdict(list)
+        for i in range(self.num_agents):
+            for j in range(i + 1, self.num_agents):
+                if self.areas_overlap(self.agent_positions[i], self.agent_positions[j]):
+                    graph[i].append(j)
+                    graph[j].append(i)
+        return graph
+
+    def areas_overlap(self, pos1, pos2):
+        x1, y1 = pos1
+        x2, y2 = pos2
+        return abs(x1 - x2) <= 2 * self.coverage_radius and abs(y1 - y2) <= 2 * self.coverage_radius
+
+    def bfs(self, start, graph, visited):
+        queue = deque([start])
+        while queue:
+            node = queue.popleft()
+            if node not in visited:
+                visited.add(node)
+                queue.extend(neighbor for neighbor in graph[node] if neighbor not in visited)
+
+
     def get_observations(self):
         observations = []
         sensor_readings = self.get_sensor_readings()
+        total_area = np.sum(self.coverage_grid > 0)
+        
         for i, pos in enumerate(self.agent_positions):
-            obs = np.zeros((self.grid_size, self.grid_size, 3))
-            obs[:,:,0] = self.grid
-            obs[:,:,1] = self.coverage_grid
             x, y = pos
-            obs[y, x, 2] = 1
-            flat_obs = obs.flatten()
-            flat_obs = np.concatenate([flat_obs, sensor_readings[i]])  # Add sensor readings to observation
-            observations.append(flat_obs)
+            obs = [
+                x, y,  # Agent's own position (x, y)
+                *sensor_readings[i],  # Sensor readings for the agent
+                *self.coverage_grid.flatten(),  # Full coverage grid (flattened)
+                *self.grid.flatten(),  # Full obstacle grid (flattened)
+                self.current_step,  # Current time step
+                total_area,  # Total area covered
+            ]
+            
+            # Positions of all other agents
+            for j, other_pos in enumerate(self.agent_positions):
+                if i != j:
+                    obs.extend(other_pos)
+            
+            observations.append(np.array(obs, dtype=np.float32))
+        
         return observations
+
 
     def get_obs_size(self):
         return self.obs_size
@@ -232,18 +228,6 @@ class MultiAgentGridEnv:
             ]
             readings.append(reading)
         return readings
-    
-    ### Can be useful for debugging
-    def get_metrics(self):
-        return {
-            "Total Area": self.total_area,
-            "Overlap Penalty": self.overlap_penalty,
-            "Connectivity Penalty": self.connectivity_penalty,
-            "Hole Penalty": self.hole_penalty,
-            "Number of Components": self.num_components,
-            "Number of Holes": len(self.find_chordless_cycles(self.build_graph())),
-            "Reward": self.total_area - self.overlap_penalty - self.connectivity_penalty - self.hole_penalty
-        }
 
 
 
@@ -263,13 +247,13 @@ class MultiAgentGridEnv:
                 rect = plt.Rectangle((j, i), 1, 1, color='black')
                 ax.add_patch(rect)
         
-        # Define consistent colors for agents
+        # Define consistent colors for 10 agents
         agent_colors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'brown', 'pink', 'gray', 'cyan']
         
         # Draw the coverage area and agents
         for idx, pos in enumerate(self.agent_positions):
             x, y = pos
-            agent_color = agent_colors[idx % len(agent_colors)]
+            agent_color = agent_colors[idx]
             
             # Draw coverage area
             for dx in range(-self.coverage_radius, self.coverage_radius + 1):
@@ -310,5 +294,8 @@ class MultiAgentGridEnv:
         else:
             plt.draw()
             plt.pause(0.001)
+
+
+
 
 

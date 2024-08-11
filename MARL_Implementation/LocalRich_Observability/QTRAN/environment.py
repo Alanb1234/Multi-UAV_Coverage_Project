@@ -2,7 +2,6 @@
 import numpy as np
 import json
 import matplotlib.pyplot as plt
-from collections import defaultdict, deque
 import networkx as nx
 
 class MultiAgentGridEnv:
@@ -14,8 +13,16 @@ class MultiAgentGridEnv:
         self.num_agents = num_agents
         self.initial_positions = initial_positions
         self.reward_type = reward_type
-        self.obs_grid_size = 7  # Size of the centered grid observation
-        self.obs_size = self.obs_grid_size * self.obs_grid_size * 2  # 2 channels: obstacles and agents
+        
+        # Calculate new obs_size for local rich observations
+        self.obs_size = (
+            2 +  # Agent's own position (x, y)
+            4 +  # Sensor readings
+            1 +  # Current time step
+            (2*coverage_radius + 1)**2 * 2 +  # Local view of coverage and obstacles
+            (num_agents - 1) * 2  # Relative positions of other agents
+        )
+        
         self.nx = nx
         self.reset()
 
@@ -51,9 +58,10 @@ class MultiAgentGridEnv:
 
         self.agent_positions = new_positions
         self.update_coverage()
-        global_reward = self.calculate_global_reward(sensor_readings)
+        global_reward = self.calculate_global_reward()
         done = self.current_step >= self.max_steps_per_episode
         return self.get_observations(), global_reward, done, actual_actions
+
 
 
     def is_valid_move(self, new_pos, sensor_reading, action, other_new_positions):
@@ -103,7 +111,11 @@ class MultiAgentGridEnv:
                 if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size and self.grid[ny, nx] == 0:
                     self.coverage_grid[ny, nx] = 1
 
-    def calculate_global_reward(self, sensor_readings):
+    ### ***********
+    ### Reward Calculation
+    ### ***********
+
+    def calculate_global_reward(self):
         self.total_area = np.sum(self.coverage_grid > 0)
         self.overlap_penalty = self.calculate_overlap()
         
@@ -115,16 +127,11 @@ class MultiAgentGridEnv:
         else:
             self.connectivity_penalty = (self.num_agents) * (self.num_components - 1) * ((1 + 2*self.coverage_radius)**2)
 
-        ### adding a sensor penalty
-        sensor_sum = sum(sum(reading) for reading in sensor_readings)
-        sensor_penalty = sensor_sum * ((1 + 2*self.coverage_radius)**2)/4
-
-
+        # self.hole_penalty = self.calculate_hole_penalty(graph)
+        # - self.hole_penalty
         
-
-        reward = self.total_area - (0.5)*self.overlap_penalty - self.connectivity_penalty - sensor_penalty
+        reward = self.total_area - (0.5)*self.overlap_penalty - self.connectivity_penalty 
         return reward
-
 
 
     
@@ -205,35 +212,53 @@ class MultiAgentGridEnv:
                 if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size and self.grid[ny, nx] == 0:
                     grid[ny, nx] += 1  # Increment instead of setting to 1
 
-
-
-    def get_centered_grid_observation(self, agent_pos):
-        x, y = agent_pos
-        radius = self.obs_grid_size // 2
-        
-        obs = np.zeros((self.obs_grid_size, self.obs_grid_size, 2))
-        
-        for i in range(self.obs_grid_size):
-            for j in range(self.obs_grid_size):
-                map_x = x + (i - radius)
-                map_y = y + (j - radius)
-                
-                if 0 <= map_x < self.grid_size and 0 <= map_y < self.grid_size:
-                    obs[i, j, 0] = self.grid[map_y, map_x]  # Obstacle channel
-                    obs[i, j, 1] = 1 if (map_x, map_y) in self.agent_positions else 0  # Agent channel
-        
-        return obs.flatten()
+    
+    ### ***********
+    ### Reward Calculation end
+    ### ***********
 
     def get_observations(self):
         observations = []
-        for pos in self.agent_positions:
-            obs = self.get_centered_grid_observation(pos)
-            observations.append(obs)
+        sensor_readings = self.get_sensor_readings()
+        
+        for i, pos in enumerate(self.agent_positions):
+            x, y = pos
+            obs = [
+                x, y,  # Agent's own position (x, y)
+                *sensor_readings[i],  # Sensor readings
+                self.current_step,  # Current time step
+            ]
+
+            # Local view of coverage and obstacles
+            for dx in range(-self.coverage_radius, self.coverage_radius + 1):
+                for dy in range(-self.coverage_radius, self.coverage_radius + 1):
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size:
+                        obs.extend([
+                            self.coverage_grid[ny, nx],
+                            self.grid[ny, nx]
+                        ])
+                    else:
+                        obs.extend([0, 1])  # Treat out-of-bounds as uncovered and obstacle            
+
+            # Relative positions of nearby agents
+            for j, other_pos in enumerate(self.agent_positions):
+                if i != j:
+                    ox, oy = other_pos
+                    if abs(x - ox) <= self.coverage_radius and abs(y - oy) <= self.coverage_radius:
+                        obs.extend([ox - x, oy - y])
+                    else:
+                        obs.extend([self.coverage_radius + 1, self.coverage_radius + 1])  # Indicate agent is out of local view
+            
+            observations.append(np.array(obs, dtype=np.float32))
+        
         return observations
+
+
+
 
     def get_obs_size(self):
         return self.obs_size
-
 
     def get_total_actions(self):
         return 5  # forward, backward, left, right, stay
@@ -281,13 +306,13 @@ class MultiAgentGridEnv:
                 rect = plt.Rectangle((j, i), 1, 1, color='black')
                 ax.add_patch(rect)
         
-        # Define consistent colors for agents
+        # Define consistent colors for 10 agents
         agent_colors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'brown', 'pink', 'gray', 'cyan']
         
         # Draw the coverage area and agents
         for idx, pos in enumerate(self.agent_positions):
             x, y = pos
-            agent_color = agent_colors[idx % len(agent_colors)]
+            agent_color = agent_colors[idx]
             
             # Draw coverage area
             for dx in range(-self.coverage_radius, self.coverage_radius + 1):
@@ -328,5 +353,8 @@ class MultiAgentGridEnv:
         else:
             plt.draw()
             plt.pause(0.001)
+
+
+
 
 

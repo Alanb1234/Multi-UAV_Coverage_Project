@@ -37,7 +37,7 @@ class VDNMixer(nn.Module):
 
 
 class VDNAgent:
-    def __init__(self, state_size, action_size, num_agents, learning_rate=0.001, gamma=0.99, epsilon=1.0):
+    def __init__(self, state_size, action_size, num_agents, learning_rate=0.001, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
         self.state_size = state_size
         self.action_size = action_size
         self.num_agents = num_agents
@@ -50,7 +50,15 @@ class VDNAgent:
         self.optimizers = [optim.Adam(net.parameters(), lr=learning_rate) for net in self.q_networks]
         self.gamma = gamma
         self.epsilon = epsilon
+        self.epsilon_min = epsilon_min
+        self.epsilon_decay = epsilon_decay
+
         self.memory = deque(maxlen=10000)
+
+    def update_epsilon(self):
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+
+
 
     def act(self, states, sensor_readings):
         actions = []
@@ -134,17 +142,17 @@ class VDNAgent:
             opt.load_state_dict(checkpoint['optimizers_state_dict'][i])
         self.epsilon = checkpoint['epsilon']
 
-def train_vdn(num_episodes=600, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.00, epsilon_decay=0.005):
+def train_vdn(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.01, epsilon_decay=0.995):
     env = MultiAgentGridEnv(
         grid_file='grid_world.json',
-        coverage_radius=7,
-        max_steps_per_episode=100,
+        coverage_radius=5,
+        max_steps_per_episode=40,
         num_agents=4,
-        initial_positions=[(1, 1), (2, 1), (3, 1), (1, 2)]
+        initial_positions=[(1, 1), (2, 1), (1, 2), (2, 2)]
     )
     state_size = env.get_obs_size()
     action_size = env.get_total_actions()
-    vdn_agent = VDNAgent(state_size, action_size, env.num_agents, epsilon=epsilon_start)
+    vdn_agent = VDNAgent(state_size, action_size, env.num_agents, epsilon=epsilon_start, epsilon_min=epsilon_min, epsilon_decay=epsilon_decay)
 
     os.makedirs('models', exist_ok=True)
     os.makedirs('logs', exist_ok=True)
@@ -173,8 +181,8 @@ def train_vdn(num_episodes=600, batch_size=32, update_freq=50, save_freq=100, ep
 
         if episode % update_freq == 0:
             vdn_agent.update_target_network()
-
-        vdn_agent.epsilon = max(epsilon_min, epsilon_start * np.exp(-epsilon_decay * episode))
+        
+        vdn_agent.update_epsilon()
 
         episode_rewards.append(total_reward)
         print(f"Episode {episode}, Total Reward: {total_reward}, Epsilon: {vdn_agent.epsilon}")

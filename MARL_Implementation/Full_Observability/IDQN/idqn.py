@@ -28,7 +28,7 @@ class QNetwork(nn.Module):
         return self.network(x)
 
 class IDQNAgent:
-    def __init__(self, state_size, action_size, learning_rate=0.001, gamma=0.99, epsilon=1.0):
+    def __init__(self, state_size, action_size, learning_rate=0.001, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
         self.state_size = state_size
         self.action_size = action_size
         self.q_network = QNetwork(state_size, action_size)
@@ -37,7 +37,12 @@ class IDQNAgent:
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=learning_rate)
         self.gamma = gamma
         self.epsilon = epsilon
+        self.epsilon_min = epsilon_min
+        self.epsilon_decay = epsilon_decay
         self.memory = deque(maxlen=10000)
+
+    def update_epsilon(self):
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
     def act(self, state, sensor_reading):
         if random.random() < self.epsilon:
@@ -47,8 +52,9 @@ class IDQNAgent:
             state = torch.FloatTensor(state).unsqueeze(0)
             action_values = self.q_network(state).squeeze(0)
 
+            # The sensor readings are now part of the state
             mask = np.zeros(self.action_size, dtype=float)
-            for i, reading in enumerate(sensor_reading):
+            for i, reading in enumerate(state[2:6]):  # Sensor readings are now indices 2-5
                 if reading == 1:
                     mask[i] = float('-inf')
 
@@ -103,12 +109,12 @@ class IDQNAgent:
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.epsilon = checkpoint['epsilon']
 
-def train_idqn(num_episodes=600, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.00, epsilon_decay=0.005):
+def train_idqn(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.01, epsilon_decay=0.995):
     
     env = MultiAgentGridEnv(
         grid_file='grid_world.json',
-        coverage_radius=7,
-        max_steps_per_episode=100,
+        coverage_radius=5,
+        max_steps_per_episode=40,
         num_agents=4,
         initial_positions=[(1, 1), (2, 1), (1, 2), (2, 2)]
     )
@@ -117,7 +123,7 @@ def train_idqn(num_episodes=600, batch_size=32, update_freq=50, save_freq=100, e
 
     state_size = env.get_obs_size()
     action_size = env.get_total_actions()
-    agents = [IDQNAgent(state_size, action_size, epsilon=epsilon_start) for _ in range(env.num_agents)]
+    agents = [IDQNAgent(state_size, action_size, epsilon=epsilon_start, epsilon_min=epsilon_min, epsilon_decay=epsilon_decay) for _ in range(env.num_agents)]
 
     os.makedirs('models', exist_ok=True)
     os.makedirs('logs', exist_ok=True)
@@ -137,8 +143,6 @@ def train_idqn(num_episodes=600, batch_size=32, update_freq=50, save_freq=100, e
             sensor_readings = env.get_sensor_readings()
             actions = [agent.act(state[i], sensor_readings[i]) for i, agent in enumerate(agents)]
             next_state, reward, done, actual_actions = env.step(actions)
-
-            reward = reward/10 # Normalizing the reward
             episode_actions.append(actual_actions)
 
             for i, agent in enumerate(agents):
@@ -153,7 +157,7 @@ def train_idqn(num_episodes=600, batch_size=32, update_freq=50, save_freq=100, e
                 agent.update_target_network()
 
         for agent in agents:
-            agent.epsilon = max(epsilon_min, epsilon_start * np.exp(-epsilon_decay * episode))
+            agent.update_epsilon()
 
         episode_rewards.append(total_reward)
         print(f"Episode {episode}, Total Reward: {total_reward}, Epsilon: {agents[0].epsilon}")

@@ -72,7 +72,7 @@ class QTRANMixer(nn.Module):
 
 
 class QTRANAgent:
-    def __init__(self, state_size, action_size, num_agents, learning_rate=0.001, gamma=0.99, epsilon=1.0):
+    def __init__(self, state_size, action_size, num_agents, learning_rate=0.001, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
         self.state_size = state_size
         self.action_size = action_size
         self.num_agents = num_agents
@@ -88,7 +88,12 @@ class QTRANAgent:
                                     lr=learning_rate)
         self.gamma = gamma
         self.epsilon = epsilon
+        self.epsilon_min = epsilon_min
+        self.epsilon_decay = epsilon_decay
         self.memory = deque(maxlen=10000)
+
+    def update_epsilon(self):
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
 
     def act(self, states, sensor_readings):
@@ -181,23 +186,23 @@ class QTRANAgent:
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.epsilon = checkpoint['epsilon']
 
-def train_qtran(num_episodes=600, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.00, epsilon_decay=0.005):
+def train_qtran(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.01, epsilon_decay=0.995):
     env = MultiAgentGridEnv(
         grid_file='grid_world.json',
-        coverage_radius=7,
-        max_steps_per_episode=100,
+        coverage_radius=5,
+        max_steps_per_episode=40,
         num_agents=4,
         initial_positions=[(1, 1), (2, 1), (1, 2), (2, 2)]
     )
     state_size = env.get_obs_size()
     action_size = env.get_total_actions()
-    qtran_agent = QTRANAgent(state_size, action_size, env.num_agents, epsilon=epsilon_start)
+    qtran_agent = QTRANAgent(state_size, action_size, env.num_agents, epsilon=epsilon_start, epsilon_min=epsilon_min, epsilon_decay=epsilon_decay)
 
     os.makedirs('models', exist_ok=True)
     os.makedirs('logs', exist_ok=True)
 
     episode_rewards = []
-    best_reward = float('-inf')
+    best_episode_reward = float('-inf')
     best_episode_actions = None
     best_episode_number = None
 
@@ -222,15 +227,16 @@ def train_qtran(num_episodes=600, batch_size=32, update_freq=50, save_freq=100, 
         if episode % update_freq == 0:
             qtran_agent.update_target_network()
 
-        qtran_agent.epsilon = max(epsilon_min, epsilon_start * np.exp(-epsilon_decay * episode))
+        qtran_agent.update_epsilon()
+
 
         episode_rewards.append(total_reward)
         print(f"Episode {episode}, Total Reward: {total_reward}, Epsilon: {qtran_agent.epsilon}")
 
-        if total_reward > best_reward:
-            best_reward = total_reward
+        if total_reward > best_episode_reward:
+            best_episode_reward = total_reward
             best_episode_actions = episode_actions
-            best_episode_number = episode
+            best_episode_number = episode  
 
         if episode % save_freq == 0:
             qtran_agent.save(f'models/qtran_agent_episode_{episode}.pth')
@@ -240,20 +246,22 @@ def train_qtran(num_episodes=600, batch_size=32, update_freq=50, save_freq=100, 
 
     qtran_agent.save('models/best_qtran_agent.pth')
 
-    save_best_episode(env.initial_positions, best_episode_actions, best_episode_number, filename='qtran_best_strategy.json')
-    save_final_positions(env, best_episode_actions, filename='qtran_final_positions.png')
-    visualize_and_record_best_strategy(env, best_episode_actions, filename='qtran_best_episode.mp4')
+    save_best_episode(env.initial_positions, best_episode_actions, best_episode_number,best_episode_reward)  
+    save_final_positions(env, best_episode_actions)
+    visualize_and_record_best_strategy(env, best_episode_actions)
     return qtran_agent, best_episode_actions, best_episode_number
   
 
 # The helper functions save_best_episode, save_final_positions, and visualize_and_record_best_strategy 
 
 
-def save_best_episode(initial_positions, best_episode_actions, best_episode_number, filename='vdn_best_strategy.json'):
+def save_best_episode(initial_positions, best_episode_actions, best_episode_number,best_episode_reward , filename='qtran_best_strategy.json'):
     action_map = ['forward', 'backward', 'left', 'right', 'stay']
     
     best_episode = {
-        "episode_number": best_episode_number
+        "episode_number": int(best_episode_number),  # Convert to int if it's np.int64
+        "episode_reward": float(best_episode_reward)  # Convert to float if it's np.float64
+
     }
     
     for i in range(len(initial_positions)):
@@ -269,7 +277,7 @@ def save_best_episode(initial_positions, best_episode_actions, best_episode_numb
 
 
 
-def save_final_positions(env, best_episode_actions, filename='vdn_final_positions.png'):
+def save_final_positions(env, best_episode_actions, filename='qtran_final_positions.png'):
     fig, ax = plt.subplots(figsize=(10, 10))
     env.reset()
     
@@ -284,7 +292,7 @@ def save_final_positions(env, best_episode_actions, filename='vdn_final_position
 
 
 
-def visualize_and_record_best_strategy(env, best_episode_actions, filename='vdn_best_episode.mp4'):
+def visualize_and_record_best_strategy(env, best_episode_actions, filename='qtran_best_episode.mp4'):
     fig, ax = plt.subplots(figsize=(10, 10))
     env.reset()
     

@@ -113,10 +113,10 @@ def train_idqn(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, e
     
     env = MultiAgentGridEnv(
         grid_file='grid_world.json',
-        coverage_radius=7,
-        max_steps_per_episode=100,
+        coverage_radius=5,
+        max_steps_per_episode=40,
         num_agents=4,
-        initial_positions=[(45, 45), (46, 45), (45, 46), (46, 46)]
+        initial_positions=[(1, 1), (2, 1), (1, 2), (2, 2)]
     )
 
 

@@ -44,7 +44,7 @@ plt.plot(qtran_episodes[window_size-1:], qtran_avg, color='black', linewidth=2, 
 
 plt.xlabel('Episode')
 plt.ylabel('Reward')
-plt.title('MARL_Algorithms_Comparison')
+plt.title('Full_Observability_MARL_Algorithms_Comparison')
 plt.legend()
 plt.grid(True, alpha=0.3)
 

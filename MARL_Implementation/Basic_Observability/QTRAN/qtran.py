@@ -189,10 +189,10 @@ class QTRANAgent:
 def train_qtran(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.01, epsilon_decay=0.995):
     env = MultiAgentGridEnv(
         grid_file='grid_world.json',
-        coverage_radius=7,
-        max_steps_per_episode=100,
+        coverage_radius=5,
+        max_steps_per_episode=40,
         num_agents=4,
-        initial_positions=[(45, 45), (46, 45), (45, 46), (46, 46)]
+        initial_positions=[(1, 1), (2, 1), (1, 2), (2, 2)]
     )
     state_size = env.get_obs_size()
     action_size = env.get_total_actions()

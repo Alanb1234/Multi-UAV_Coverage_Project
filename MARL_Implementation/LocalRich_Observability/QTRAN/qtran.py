@@ -72,7 +72,7 @@ class QTRANMixer(nn.Module):
 
 
 class QTRANAgent:
-    def __init__(self, state_size, action_size, num_agents, learning_rate=0.001, gamma=0.99, epsilon=1.0):
+    def __init__(self, state_size, action_size, num_agents, learning_rate=0.001, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
         self.state_size = state_size
         self.action_size = action_size
         self.num_agents = num_agents
@@ -88,7 +88,12 @@ class QTRANAgent:
                                     lr=learning_rate)
         self.gamma = gamma
         self.epsilon = epsilon
+        self.epsilon_min = epsilon_min
+        self.epsilon_decay = epsilon_decay
         self.memory = deque(maxlen=10000)
+
+    def update_epsilon(self):
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
 
     def act(self, states, sensor_readings):
@@ -181,17 +186,17 @@ class QTRANAgent:
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.epsilon = checkpoint['epsilon']
 
-def train_qtran(num_episodes=600, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.00, epsilon_decay=0.005):
+def train_qtran(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.01, epsilon_decay=0.995):
     env = MultiAgentGridEnv(
         grid_file='grid_world.json',
-        coverage_radius=7,
-        max_steps_per_episode=100,
+        coverage_radius=5,
+        max_steps_per_episode=40,
         num_agents=4,
         initial_positions=[(1, 1), (2, 1), (1, 2), (2, 2)]
     )
     state_size = env.get_obs_size()
     action_size = env.get_total_actions()
-    qtran_agent = QTRANAgent(state_size, action_size, env.num_agents, epsilon=epsilon_start)
+    qtran_agent = QTRANAgent(state_size, action_size, env.num_agents, epsilon=epsilon_start, epsilon_min=epsilon_min, epsilon_decay=epsilon_decay)
 
     os.makedirs('models', exist_ok=True)
     os.makedirs('logs', exist_ok=True)
@@ -211,9 +216,6 @@ def train_qtran(num_episodes=600, batch_size=32, update_freq=50, save_freq=100, 
             sensor_readings = env.get_sensor_readings()
             actions = qtran_agent.act(state, sensor_readings)
             next_state, reward, done, actual_actions = env.step(actions)
-
-            reward = reward/100 # Normalizing the reward
-            
             episode_actions.append(actual_actions)
 
             qtran_agent.remember(state, actual_actions, reward, next_state, done)
@@ -225,7 +227,8 @@ def train_qtran(num_episodes=600, batch_size=32, update_freq=50, save_freq=100, 
         if episode % update_freq == 0:
             qtran_agent.update_target_network()
 
-        qtran_agent.epsilon = max(epsilon_min, epsilon_start * np.exp(-epsilon_decay * episode))
+        qtran_agent.update_epsilon()
+
 
         episode_rewards.append(total_reward)
         print(f"Episode {episode}, Total Reward: {total_reward}, Epsilon: {qtran_agent.epsilon}")
