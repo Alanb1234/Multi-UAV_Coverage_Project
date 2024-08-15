@@ -341,7 +341,13 @@ def visualize_and_record_best_strategy(env, best_episode_actions, filename='qmix
     writer = FFMpegWriter(fps=2)
     
     with writer.saving(fig, filename, dpi=100):
-        for step, actions in enumerate(best_episode_actions):
+        # Capture the initial state
+        ax.clear()
+        env.render(ax, actions=None, step=0)
+        writer.grab_frame()
+        plt.pause(0.1)
+        
+        for step, actions in enumerate(best_episode_actions, start=1):
             env.step(actions)
             ax.clear()
             env.render(ax, actions=actions, step=step)
@@ -350,7 +356,6 @@ def visualize_and_record_best_strategy(env, best_episode_actions, filename='qmix
     
     plt.close(fig)
     print(f"Best episode visualization saved as {filename}")
-
 
 if __name__ == "__main__":
     agent, best_episode_actions, best_episode_number = train_qmix()

@@ -1,0 +1,76 @@
+{
+    "episode_number": 759,
+    "episode_reward": 122.0,
+    "agent_0": {
+        "actions": [
+            "stay",
+            "stay",
+            "left",
+            "forward",
+            "stay",
+            "stay",
+            "stay",
+            "stay",
+            "stay",
+            "forward"
+        ],
+        "initial_position": [
+            1,
+            1
+        ]
+    },
+    "agent_1": {
+        "actions": [
+            "stay",
+            "left",
+            "forward",
+            "forward",
+            "forward",
+            "forward",
+            "forward",
+            "stay",
+            "stay",
+            "backward"
+        ],
+        "initial_position": [
+            2,
+            1
+        ]
+    },
+    "agent_2": {
+        "actions": [
+            "left",
+            "left",
+            "forward",
+            "left",
+            "forward",
+            "backward",
+            "stay",
+            "stay",
+            "stay",
+            "stay"
+        ],
+        "initial_position": [
+            1,
+            2
+        ]
+    },
+    "agent_3": {
+        "actions": [
+            "forward",
+            "forward",
+            "forward",
+            "forward",
+            "left",
+            "left",
+            "left",
+            "stay",
+            "stay",
+            "stay"
+        ],
+        "initial_position": [
+            2,
+            2
+        ]
+    }
+}

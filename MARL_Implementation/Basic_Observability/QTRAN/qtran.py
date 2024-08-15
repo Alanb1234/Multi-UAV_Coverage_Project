@@ -291,7 +291,6 @@ def save_final_positions(env, best_episode_actions, filename='qtran_final_positi
     print(f"Final positions saved as {filename}")
 
 
-
 def visualize_and_record_best_strategy(env, best_episode_actions, filename='qtran_best_episode.mp4'):
     fig, ax = plt.subplots(figsize=(10, 10))
     env.reset()
@@ -300,7 +299,13 @@ def visualize_and_record_best_strategy(env, best_episode_actions, filename='qtra
     writer = FFMpegWriter(fps=2)
     
     with writer.saving(fig, filename, dpi=100):
-        for step, actions in enumerate(best_episode_actions):
+        # Capture the initial state
+        ax.clear()
+        env.render(ax, actions=None, step=0)
+        writer.grab_frame()
+        plt.pause(0.1)
+        
+        for step, actions in enumerate(best_episode_actions, start=1):
             env.step(actions)
             ax.clear()
             env.render(ax, actions=actions, step=step)
@@ -309,7 +314,6 @@ def visualize_and_record_best_strategy(env, best_episode_actions, filename='qtra
     
     plt.close(fig)
     print(f"Best episode visualization saved as {filename}")
-
 
 if __name__ == "__main__":
     trained_qtran_agent, best_episode_actions, best_episode_number = train_qtran()

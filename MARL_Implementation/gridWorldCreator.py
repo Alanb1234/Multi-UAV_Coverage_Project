@@ -3,20 +3,22 @@ import numpy as np
 import json
 
 class GridWorldGUI:
-    def __init__(self, grid_size=20, cell_size=20):
+    def __init__(self, grid_width=20, grid_height=15, cell_size=20):
         pygame.init()
-        self.grid_size = grid_size
+        self.grid_width = grid_width
+        self.grid_height = grid_height
         self.cell_size = cell_size
-        self.grid = np.zeros((grid_size, grid_size), dtype=int)
+        self.grid = np.zeros((grid_height, grid_width), dtype=int)
 
         # Initialize outer cells as obstacles
         self.grid[0, :] = 1
         self.grid[:, 0] = 1
-        self.grid[grid_size - 1, :] = 1
-        self.grid[:, grid_size - 1] = 1
+        self.grid[grid_height - 1, :] = 1
+        self.grid[:, grid_width - 1] = 1
 
-        self.screen_size = grid_size * cell_size
-        self.screen = pygame.display.set_mode((self.screen_size, self.screen_size), pygame.RESIZABLE)
+        self.screen_width = grid_width * cell_size
+        self.screen_height = grid_height * cell_size
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
         pygame.display.set_caption("Grid World Editor")
         self.running = True
         self.dragging = False
@@ -26,8 +28,8 @@ class GridWorldGUI:
 
     def draw_grid(self):
         self.screen.fill((255, 255, 255))
-        for i in range(self.grid_size):
-            for j in range(self.grid_size):
+        for i in range(self.grid_height):
+            for j in range(self.grid_width):
                 color = (0, 0, 0) if self.grid[i, j] == 1 else (255, 255, 255)
                 pygame.draw.rect(self.screen, color, 
                                  (j * self.cell_size, i * self.cell_size, self.cell_size, self.cell_size))
@@ -36,7 +38,7 @@ class GridWorldGUI:
         pygame.display.flip()
 
     def toggle_cell(self, row, col):
-        if 0 < row < self.grid_size-1 and 0 < col < self.grid_size-1:
+        if 0 < row < self.grid_height-1 and 0 < col < self.grid_width-1:
             self.grid[row, col] = self.toggle_to
 
     def handle_events(self):
@@ -51,7 +53,7 @@ class GridWorldGUI:
                     pos = pygame.mouse.get_pos()
                     row = pos[1] // self.cell_size
                     col = pos[0] // self.cell_size
-                    if 0 < row < self.grid_size-1 and 0 < col < self.grid_size-1:
+                    if 0 < row < self.grid_height-1 and 0 < col < self.grid_width-1:
                         self.toggle_to = 1 if self.grid[row, col] == 0 else 0
                         self.toggle_cell(row, col)
             elif event.type == pygame.MOUSEBUTTONUP:
@@ -71,9 +73,10 @@ class GridWorldGUI:
             self.toggle_cell(row, col)
 
     def resize_screen(self, new_width, new_height):
-        self.screen_size = min(new_width, new_height)
-        self.cell_size = self.screen_size // self.grid_size
-        self.screen = pygame.display.set_mode((self.screen_size, self.screen_size), pygame.RESIZABLE)
+        self.cell_size = min(new_width // self.grid_width, new_height // self.grid_height)
+        self.screen_width = self.grid_width * self.cell_size
+        self.screen_height = self.grid_height * self.cell_size
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
 
     def main_loop(self):
         while self.running:
@@ -97,12 +100,14 @@ class GridWorldGUI:
                 self.grid = np.array(json.load(f))
                 # Flip the grid along the x-axis for consistency
                 self.grid = np.flipud(self.grid)
+                self.grid_height, self.grid_width = self.grid.shape
+                self.resize_screen(self.screen_width, self.screen_height)
         except FileNotFoundError:
             print(f"No such file: '{filename}'")
 
 # Usage
 if __name__ == "__main__":
-    gui = GridWorldGUI()
+    gui = GridWorldGUI(grid_width=10, grid_height=8)
     grid_world = gui.get_grid()
-    gui.save_grid('grid_world.json')
+    gui.save_grid('LAB_world.json')
     #print(grid_world)
