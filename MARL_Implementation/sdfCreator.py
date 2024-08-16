@@ -7,7 +7,10 @@ def load_grid(filename):
     return grid
 
 def create_sdf_optimized(grid, output_filename='world_optimized.sdf'):
-    grid_size = len(grid)
+    grid_height = len(grid)
+    grid_width = len(grid[0])
+
+    
     sdf_template = '''<?xml version="1.0" ?>
 <sdf version="1.9">
   <world name="world_optimized">
@@ -76,10 +79,10 @@ def create_sdf_optimized(grid, output_filename='world_optimized.sdf'):
 '''
 
     # Combine adjacent obstacle cells into larger blocks
-    visited = [[False for _ in range(grid_size)] for _ in range(grid_size)]
+    visited = [[False for _ in range(grid_width)] for _ in range(grid_height)]
 
-    for i in range(grid_size):
-        for j in range(grid_size):
+    for i in range(grid_height):
+        for j in range(grid_width):
             if grid[i][j] == 1 and not visited[i][j]:
                 x_start = j
                 y_start = i
@@ -87,9 +90,9 @@ def create_sdf_optimized(grid, output_filename='world_optimized.sdf'):
                 y_end = i
 
                 # Find the extent of this obstacle block
-                while x_end + 1 < grid_size and grid[y_start][x_end + 1] == 1:
+                while x_end + 1 < grid_width and grid[y_start][x_end + 1] == 1:
                     x_end += 1
-                while y_end + 1 < grid_size and all(grid[y][x_start:x_end + 1] == [1] * (x_end - x_start + 1) for y in range(y_start, y_end + 2)):
+                while y_end + 1 < grid_height and all(grid[y][x_start:x_end + 1] == [1] * (x_end - x_start + 1) for y in range(y_start, y_end + 2)):
                     y_end += 1
 
                 # Mark these cells as visited
@@ -101,7 +104,7 @@ def create_sdf_optimized(grid, output_filename='world_optimized.sdf'):
                 block = f'''
     <model name="block_{i}_{j}">
       <static>true</static>
-      <pose>{(x_start + x_end) / 2 } {(y_start + y_end) / 2 } 1 0 0 0</pose>
+      <pose>{(x_start + x_end) / 2} {(y_start + y_end) / 2} 1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -126,6 +129,7 @@ def create_sdf_optimized(grid, output_filename='world_optimized.sdf'):
     </model>
 '''
                 sdf_template += block
+
 
     # Close the SDF template
     sdf_template += '''

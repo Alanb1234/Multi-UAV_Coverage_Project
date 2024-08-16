@@ -44,7 +44,7 @@ plt.plot(vdn_episodes[window_size-1:], vdn_avg, color='red', linewidth=2, label=
 
 plt.xlabel('Episode')
 plt.ylabel('Reward')
-plt.title('Basic_Observability_MARL_Algorithms_Comparison')
+plt.title('localRich_Observability_MARL_Algorithms_Comparison')
 plt.legend()
 plt.grid(True, alpha=0.3)
 

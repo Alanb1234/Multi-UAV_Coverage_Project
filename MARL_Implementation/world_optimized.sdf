@@ -66,19 +66,19 @@
 
     <model name="block_0_0">
       <static>true</static>
-      <pose>3.5 0.0 1 0 0 0</pose>
+      <pose>4.5 0.0 1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>8 1 2</size>
+              <size>10 1 2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>8 1 2</size>
+              <size>10 1 2</size>
             </box>
           </geometry>
           <material>
@@ -116,21 +116,47 @@
       </link>
     </model>
 
-    <model name="block_7_1">
+    <model name="block_1_9">
       <static>true</static>
-      <pose>4.0 7.0 1 0 0 0</pose>
+      <pose>9.0 4.0 1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>7 1 2</size>
+              <size>1 7 2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>7 1 2</size>
+              <size>1 7 2</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+            <specular>0.5 0.5 0.5 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="block_7_1">
+      <static>true</static>
+      <pose>5.0 7.0 1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>9 1 2</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>9 1 2</size>
             </box>
           </geometry>
           <material>

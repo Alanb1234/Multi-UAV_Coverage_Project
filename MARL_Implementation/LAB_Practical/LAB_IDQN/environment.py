@@ -21,7 +21,7 @@ class MultiAgentGridEnv:
             4 +  # Sensor readings
             1 +  # Current time step
             (2*coverage_radius + 1)**2 * 2 +  # Local view of coverage and obstacles
-            (num_agents - 1) * 2  # Relative positions of other agents
+            (num_agents - 1) * 2  # Relative positions of other agents (x, y)
         )
         
         self.nx = nx
