@@ -8,6 +8,7 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.animation import FFMpegWriter
+import math
 
 from environment import MultiAgentGridEnv
 import json
@@ -37,7 +38,7 @@ class VDNMixer(nn.Module):
 
 
 class VDNAgent:
-    def __init__(self, state_size, action_size, num_agents, learning_rate=0.001, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
+    def __init__(self, state_size, action_size, num_agents, learning_rate=0.001, gamma=0.99, epsilon_start=1.0, epsilon_min=0.0, epsilon_decay=0.995, decay_method='exponential'):
         self.state_size = state_size
         self.action_size = action_size
         self.num_agents = num_agents
@@ -49,14 +50,29 @@ class VDNAgent:
         self.target_mixer = VDNMixer(num_agents)
         self.optimizers = [optim.Adam(net.parameters(), lr=learning_rate) for net in self.q_networks]
         self.gamma = gamma
-        self.epsilon = epsilon
+        self.epsilon_start = epsilon_start
+        self.epsilon = epsilon_start
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
-
+        self.decay_method = decay_method
+        self.total_steps = 0
         self.memory = deque(maxlen=10000)
 
-    def update_epsilon(self):
-        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+
+
+    def update_epsilon(self, episode=None):
+        if self.decay_method == 'exponential':
+            self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+        elif self.decay_method == 'linear':
+            self.epsilon = max(self.epsilon_min, self.epsilon_start - (self.epsilon_start - self.epsilon_min) * (self.total_steps / 1000000))
+        elif self.decay_method == 'cosine':
+            self.epsilon = self.epsilon_min + 0.5 * (self.epsilon_start - self.epsilon_min) * (1 + math.cos(math.pi * self.total_steps / 1000000))
+        elif self.decay_method == 'step':
+            if episode is not None and episode % 100 == 0:
+                self.epsilon = max(self.epsilon_min, self.epsilon * 0.5)
+        
+        self.total_steps += 1
+
 
 
 
@@ -142,17 +158,24 @@ class VDNAgent:
             opt.load_state_dict(checkpoint['optimizers_state_dict'][i])
         self.epsilon = checkpoint['epsilon']
 
-def train_vdn(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.01, epsilon_decay=0.995):
+def train_vdn(num_episodes=2000, batch_size=32, update_freq=50, save_freq=100, 
+              epsilon_start=1.0, epsilon_min=0.0, epsilon_decay=0.992, 
+              decay_method='exponential'):
+    
     env = MultiAgentGridEnv(
         grid_file='grid_world.json',
-        coverage_radius=5,
-        max_steps_per_episode=40,
+        coverage_radius=2,
+        max_steps_per_episode=20,
         num_agents=4,
         initial_positions=[(1, 1), (2, 1), (1, 2), (2, 2)]
     )
+    
     state_size = env.get_obs_size()
     action_size = env.get_total_actions()
-    vdn_agent = VDNAgent(state_size, action_size, env.num_agents, epsilon=epsilon_start, epsilon_min=epsilon_min, epsilon_decay=epsilon_decay)
+    vdn_agent = VDNAgent(state_size, action_size, env.num_agents, 
+                         epsilon_start=epsilon_start, epsilon_min=epsilon_min, 
+                         epsilon_decay=epsilon_decay, decay_method=decay_method)
+
 
     os.makedirs('models', exist_ok=True)
     os.makedirs('logs', exist_ok=True)
@@ -161,11 +184,13 @@ def train_vdn(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, ep
     best_episode_reward = float('-inf')
     best_episode_actions = None
     best_episode_number = None  
+
     for episode in range(num_episodes):
         state = env.reset()
         total_reward = 0
         done = False
         episode_actions = []
+
 
         while not done:
             sensor_readings = env.get_sensor_readings()
@@ -182,7 +207,7 @@ def train_vdn(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, ep
         if episode % update_freq == 0:
             vdn_agent.update_target_network()
         
-        vdn_agent.update_epsilon()
+        
 
         episode_rewards.append(total_reward)
         print(f"Episode {episode}, Total Reward: {total_reward}, Epsilon: {vdn_agent.epsilon}")
@@ -197,6 +222,8 @@ def train_vdn(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, ep
 
         with open('logs/rewards.txt', 'a') as f:
             f.write(f"{episode},{total_reward}\n")
+
+        vdn_agent.update_epsilon(episode)
 
     vdn_agent.save('models/best_vdn_agent.pth')
 
@@ -272,6 +299,8 @@ def visualize_and_record_best_strategy(env, best_episode_actions, filename='vdn_
 
 
 if __name__ == "__main__":
-    trained_vdn_agent, best_episode_actions, best_episode_number = train_vdn()
+    trained_vdn_agent, best_episode_actions, best_episode_number = train_vdn(
+        decay_method='exponential'  # or 'linear', 'cosine', 'step'
+    )
     print(f"Best episode: {best_episode_number}")
- 
+

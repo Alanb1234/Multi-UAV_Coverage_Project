@@ -66,19 +66,19 @@
 
     <model name="block_0_0">
       <static>true</static>
-      <pose>4.5 0.0 1 0 0 0</pose>
+      <pose>9.5 0.0 1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>10 1 2</size>
+              <size>20 1 2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>10 1 2</size>
+              <size>20 1 2</size>
             </box>
           </geometry>
           <material>
@@ -92,19 +92,19 @@
 
     <model name="block_1_0">
       <static>true</static>
-      <pose>0.0 4.0 1 0 0 0</pose>
+      <pose>0.0 10.0 1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>1 7 2</size>
+              <size>1 19 2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>1 7 2</size>
+              <size>1 19 2</size>
             </box>
           </geometry>
           <material>
@@ -116,21 +116,21 @@
       </link>
     </model>
 
-    <model name="block_1_9">
+    <model name="block_1_19">
       <static>true</static>
-      <pose>9.0 4.0 1 0 0 0</pose>
+      <pose>19.0 10.0 1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>1 7 2</size>
+              <size>1 19 2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>1 7 2</size>
+              <size>1 19 2</size>
             </box>
           </geometry>
           <material>
@@ -142,21 +142,21 @@
       </link>
     </model>
 
-    <model name="block_7_1">
+    <model name="block_19_1">
       <static>true</static>
-      <pose>5.0 7.0 1 0 0 0</pose>
+      <pose>10.0 19.0 1 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>9 1 2</size>
+              <size>19 1 2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>9 1 2</size>
+              <size>19 1 2</size>
             </box>
           </geometry>
           <material>

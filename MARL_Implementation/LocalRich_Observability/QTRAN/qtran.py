@@ -8,6 +8,7 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.animation import FFMpegWriter
+import math
 
 from environment import MultiAgentGridEnv
 import json
@@ -72,7 +73,8 @@ class QTRANMixer(nn.Module):
 
 
 class QTRANAgent:
-    def __init__(self, state_size, action_size, num_agents, learning_rate=0.001, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
+    def __init__(self, state_size, action_size, num_agents, learning_rate=0.001, gamma=0.99, 
+                 epsilon_start=1.0, epsilon_min=0.0, epsilon_decay=0.995, decay_method='exponential'):
         self.state_size = state_size
         self.action_size = action_size
         self.num_agents = num_agents
@@ -87,13 +89,27 @@ class QTRANAgent:
                                     [p for net in self.q_networks for p in net.parameters()], 
                                     lr=learning_rate)
         self.gamma = gamma
-        self.epsilon = epsilon
+        self.epsilon_start = epsilon_start
+        self.epsilon = epsilon_start
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
+        self.decay_method = decay_method
+        self.total_steps = 0
         self.memory = deque(maxlen=10000)
 
-    def update_epsilon(self):
-        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+    def update_epsilon(self, episode=None):
+        if self.decay_method == 'exponential':
+            self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+        elif self.decay_method == 'linear':
+            self.epsilon = max(self.epsilon_min, self.epsilon_start - (self.epsilon_start - self.epsilon_min) * (self.total_steps / 1000000))
+        elif self.decay_method == 'cosine':
+            self.epsilon = self.epsilon_min + 0.5 * (self.epsilon_start - self.epsilon_min) * (1 + math.cos(math.pi * self.total_steps / 1000000))
+        elif self.decay_method == 'step':
+            if episode is not None and episode % 100 == 0:
+                self.epsilon = max(self.epsilon_min, self.epsilon * 0.5)
+        
+        self.total_steps += 1
+
 
 
     def act(self, states, sensor_readings):
@@ -186,17 +202,23 @@ class QTRANAgent:
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.epsilon = checkpoint['epsilon']
 
-def train_qtran(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.01, epsilon_decay=0.995):
+def train_qtran(num_episodes=5000, batch_size=32, update_freq=50, save_freq=100, 
+                epsilon_start=1.0, epsilon_min=0.01, epsilon_decay=0.9991, 
+                decay_method='exponential'):
+    
     env = MultiAgentGridEnv(
         grid_file='grid_world.json',
-        coverage_radius=5,
-        max_steps_per_episode=40,
+        coverage_radius=2,
+        max_steps_per_episode=25,
         num_agents=4,
-        initial_positions=[(1, 1), (2, 1), (1, 2), (2, 2)]
+        initial_positions=[(31, 31), (32, 31), (31, 32),(32, 32)]
     )
+
     state_size = env.get_obs_size()
     action_size = env.get_total_actions()
-    qtran_agent = QTRANAgent(state_size, action_size, env.num_agents, epsilon=epsilon_start, epsilon_min=epsilon_min, epsilon_decay=epsilon_decay)
+    qtran_agent = QTRANAgent(state_size, action_size, env.num_agents, 
+                             epsilon_start=epsilon_start, epsilon_min=epsilon_min, 
+                             epsilon_decay=epsilon_decay, decay_method=decay_method)
 
     os.makedirs('models', exist_ok=True)
     os.makedirs('logs', exist_ok=True)
@@ -216,19 +238,14 @@ def train_qtran(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, 
             sensor_readings = env.get_sensor_readings()
             actions = qtran_agent.act(state, sensor_readings)
             next_state, reward, done, actual_actions = env.step(actions)
-            episode_actions.append(actual_actions)
-
             qtran_agent.remember(state, actual_actions, reward, next_state, done)
             qtran_agent.replay(batch_size)
-
             state = next_state
             total_reward += reward
+            episode_actions.append(actual_actions)
 
         if episode % update_freq == 0:
             qtran_agent.update_target_network()
-
-        qtran_agent.update_epsilon()
-
 
         episode_rewards.append(total_reward)
         print(f"Episode {episode}, Total Reward: {total_reward}, Epsilon: {qtran_agent.epsilon}")
@@ -244,12 +261,16 @@ def train_qtran(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, 
         with open('logs/rewards.txt', 'a') as f:
             f.write(f"{episode},{total_reward}\n")
 
+        qtran_agent.update_epsilon(episode)  # Update epsilon at the end of each episode
+
     qtran_agent.save('models/best_qtran_agent.pth')
 
-    save_best_episode(env.initial_positions, best_episode_actions, best_episode_number,best_episode_reward)  
+    save_best_episode(env.initial_positions, best_episode_actions, best_episode_number, best_episode_reward)  
     save_final_positions(env, best_episode_actions)
     visualize_and_record_best_strategy(env, best_episode_actions)
     return qtran_agent, best_episode_actions, best_episode_number
+
+
   
 
 # The helper functions save_best_episode, save_final_positions, and visualize_and_record_best_strategy 
@@ -318,12 +339,7 @@ def visualize_and_record_best_strategy(env, best_episode_actions, filename='qtra
 
 
 if __name__ == "__main__":
-    trained_qtran_agent, best_episode_actions, best_episode_number = train_qtran()
-    print(f"Best episode: {best_episode_number}")
-    env = MultiAgentGridEnv(
-        grid_file='grid_world.json',
-        coverage_radius=7,
-        max_steps_per_episode=100,
-        num_agents=4,
-        initial_positions=[(1, 1), (2, 1), (1, 2), (2, 2)]
+    trained_qtran_agent, best_episode_actions, best_episode_number = train_qtran(
+        decay_method='exponential'  # or 'linear', 'cosine', 'step'
     )
+    print(f"Best episode: {best_episode_number}")

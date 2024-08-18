@@ -7,25 +7,27 @@ import networkx as nx
 class MultiAgentGridEnv:
     def __init__(self, grid_file, coverage_radius, max_steps_per_episode, num_agents, initial_positions, reward_type='global'):
         self.grid = self.load_grid(grid_file)
-        self.grid_size = self.grid.shape[1]
+        self.grid_height, self.grid_width = self.grid.shape  # Use height and width instead of grid_size
         self.coverage_radius = coverage_radius
         self.max_steps_per_episode = max_steps_per_episode
         self.num_agents = num_agents
         self.initial_positions = initial_positions
         self.reward_type = reward_type
+
         
-        # Calculate new obs_size
+        # Calculate new obs_size for local rich observations
         self.obs_size = (
             2 +  # Agent's own position (x, y)
             4 +  # Sensor readings
-            self.grid_size * self.grid_size +  # Full coverage grid (flattened)
-            self.grid_size * self.grid_size +  # Full obstacle grid (flattened)
+            self.grid_height * self.grid_width +  # Full coverage grid (flattened)
+            self.grid_height * self.grid_width +  # Full obstacle grid (flattened)
             1 +  # Current time step
             1 +  # Total area
             2 * (self.num_agents - 1)  # Positions of all other agents
         )
-        self.nx = nx
         
+        
+        self.nx = nx
         self.reset()
 
 
@@ -68,7 +70,7 @@ class MultiAgentGridEnv:
 
     def is_valid_move(self, new_pos, sensor_reading, action, other_new_positions):
         x, y = new_pos
-        if not (0 <= x < self.grid_size and 0 <= y < self.grid_size):
+        if not (0 <= x < self.grid_width and 0 <= y < self.grid_height):  # Use grid_width and grid_height
             return False
         if self.grid[y, x] == 1:  # Check for obstacles
             return False
@@ -86,6 +88,7 @@ class MultiAgentGridEnv:
         return True
 
 
+
     def update_coverage(self):
         self.coverage_grid = np.zeros_like(self.grid)
         for pos in self.agent_positions:
@@ -94,15 +97,16 @@ class MultiAgentGridEnv:
     def get_new_position(self, position, action):
         x, y = position
         if action == 0:  # forward (positive x)
-            return (min(x + 1, self.grid_size - 1), y)
+            return (min(x + 1, self.grid_width - 1), y)
         elif action == 1:  # backward (negative x)
             return (max(x - 1, 0), y)
         elif action == 2:  # left (positive y)
-            return (x, min(y + 1, self.grid_size - 1))
+            return (x, min(y + 1, self.grid_height - 1))
         elif action == 3:  # right (negative y)
             return (x, max(y - 1, 0))
         else:  # stay
             return (x, y)
+
 
 
     def cover_area(self, state):
@@ -110,7 +114,7 @@ class MultiAgentGridEnv:
         for dx in range(-self.coverage_radius, self.coverage_radius + 1):
             for dy in range(-self.coverage_radius, self.coverage_radius + 1):
                 nx, ny = x + dx, y + dy
-                if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size and self.grid[ny, nx] == 0:
+                if 0 <= nx < self.grid_width and 0 <= ny < self.grid_height and self.grid[ny, nx] == 0:
                     self.coverage_grid[ny, nx] = 1
 
     ### ***********
@@ -129,11 +133,31 @@ class MultiAgentGridEnv:
         else:
             self.connectivity_penalty = (self.num_agents) * (self.num_components - 1) * ((1 + 2*self.coverage_radius)**2)
 
-        # self.hole_penalty = self.calculate_hole_penalty(graph)
-        # - self.hole_penalty
-        
-        reward = self.total_area - (0.5)*self.overlap_penalty - self.connectivity_penalty 
+        self.hole_penalty = self.calculate_hole_penalty(graph)
+
+
+        self.sensor_1s = self.calculate_sensor_penalty()
+        self.sensor_penalty = self.sensor_1s* ((1 + 2*self.coverage_radius)**2)
+
+        reward = (
+            self.total_area 
+            - (0.5) * self.overlap_penalty 
+            - self.connectivity_penalty 
+            - self.hole_penalty 
+            - self.sensor_penalty  # Adjust the weight as needed
+        )
         return reward
+
+    def calculate_sensor_penalty(self):
+        sensor_readings = self.get_sensor_readings()
+        total_penalty = 0
+        for readings in sensor_readings:
+            # Sum up the number of 'blocked' directions (1's in the sensor reading)
+            penalty = sum(readings)
+            if penalty > 0:
+                total_penalty += 1
+            
+        return total_penalty
 
 
     
@@ -211,8 +235,10 @@ class MultiAgentGridEnv:
         for dx in range(-self.coverage_radius, self.coverage_radius + 1):
             for dy in range(-self.coverage_radius, self.coverage_radius + 1):
                 nx, ny = x + dx, y + dy
-                if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size and self.grid[ny, nx] == 0:
+                if 0 <= nx < self.grid_width and 0 <= ny < self.grid_height and self.grid[ny, nx] == 0:
                     grid[ny, nx] += 1  # Increment instead of setting to 1
+
+
 
     
     ### ***********
@@ -245,6 +271,10 @@ class MultiAgentGridEnv:
         return observations
 
 
+
+
+
+
     def get_obs_size(self):
         return self.obs_size
 
@@ -256,13 +286,14 @@ class MultiAgentGridEnv:
         for pos in self.agent_positions:
             x, y = pos
             reading = [
-                1 if x == self.grid_size - 1 or self.grid[y, x + 1] == 1 or (x + 1, y) in self.agent_positions else 0,  # forward
+                1 if x == self.grid_width - 1 or self.grid[y, x + 1] == 1 or (x + 1, y) in self.agent_positions else 0,  # forward
                 1 if x == 0 or self.grid[y, x - 1] == 1 or (x - 1, y) in self.agent_positions else 0,  # backward
-                1 if y == self.grid_size - 1 or self.grid[y + 1, x] == 1 or (x, y + 1) in self.agent_positions else 0,  # left
+                1 if y == self.grid_height - 1 or self.grid[y + 1, x] == 1 or (x, y + 1) in self.agent_positions else 0,  # left
                 1 if y == 0 or self.grid[y - 1, x] == 1 or (x, y - 1) in self.agent_positions else 0  # right
             ]
             readings.append(reading)
         return readings
+
     
     ### Can be useful for debugging
     def get_metrics(self):
@@ -285,14 +316,15 @@ class MultiAgentGridEnv:
             fig = ax.figure
         
         ax.clear()
-        ax.set_xlim(0, self.grid_size)
-        ax.set_ylim(0, self.grid_size)
+        ax.set_xlim(0, self.grid_width)
+        ax.set_ylim(0, self.grid_height)
         
         # Draw the grid and obstacles
-        for (j, i) in np.ndindex(self.grid.shape):
-            if self.grid[i, j] == 1:  # Obstacles are black
-                rect = plt.Rectangle((j, i), 1, 1, color='black')
-                ax.add_patch(rect)
+        for i in range(self.grid_height):
+            for j in range(self.grid_width):
+                if self.grid[i, j] == 1:  # Obstacles are black
+                    rect = plt.Rectangle((j, i), 1, 1, color='black')
+                    ax.add_patch(rect)
         
         # Define consistent colors for 10 agents
         agent_colors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'brown', 'pink', 'gray', 'cyan']
@@ -300,13 +332,13 @@ class MultiAgentGridEnv:
         # Draw the coverage area and agents
         for idx, pos in enumerate(self.agent_positions):
             x, y = pos
-            agent_color = agent_colors[idx]
+            agent_color = agent_colors[idx % len(agent_colors)]
             
             # Draw coverage area
             for dx in range(-self.coverage_radius, self.coverage_radius + 1):
                 for dy in range(-self.coverage_radius, self.coverage_radius + 1):
                     nx, ny = x + dx, y + dy
-                    if 0 <= nx < self.grid_size and 0 <= ny < self.grid_size and self.grid[ny, nx] == 0:
+                    if 0 <= nx < self.grid_width and 0 <= ny < self.grid_height and self.grid[ny, nx] == 0:
                         rect = plt.Rectangle((nx, ny), 1, 1, color=agent_color, alpha=0.3)
                         ax.add_patch(rect)
             

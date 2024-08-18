@@ -109,14 +109,14 @@ class IDQNAgent:
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.epsilon = checkpoint['epsilon']
 
-def train_idqn(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.01, epsilon_decay=0.995):
+def train_idqn(num_episodes=2000, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.0, epsilon_decay=0.992):
     
     env = MultiAgentGridEnv(
         grid_file='LAB_world.json',
         coverage_radius=2,
         max_steps_per_episode=10,
         num_agents=4,
-        initial_positions=[(1, 1), (2, 1), (1, 2), (2, 2)]
+        initial_positions=[(4, 3), (5, 3), (4, 4), (5, 4)]
     )
 
 

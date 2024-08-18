@@ -143,5 +143,5 @@ def create_sdf_optimized(grid, output_filename='world_optimized.sdf'):
 
 # Usage
 if __name__ == "__main__":
-    grid = load_grid('LAB_world.json')
+    grid = load_grid('grid_world.json')
     create_sdf_optimized(grid, 'world_optimized.sdf')

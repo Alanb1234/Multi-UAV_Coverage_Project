@@ -8,7 +8,7 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.animation import FFMpegWriter
-
+import math
 
 from environment import MultiAgentGridEnv
 import json
@@ -28,7 +28,7 @@ class QNetwork(nn.Module):
         return self.network(x)
 
 class IDQNAgent:
-    def __init__(self, state_size, action_size, learning_rate=0.001, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
+    def __init__(self, state_size, action_size, learning_rate=0.001, gamma=0.99, epsilon_start=1.0, epsilon_min=0.0, epsilon_decay=0.995, decay_method='exponential'):
         self.state_size = state_size
         self.action_size = action_size
         self.q_network = QNetwork(state_size, action_size)
@@ -36,13 +36,27 @@ class IDQNAgent:
         self.target_network.load_state_dict(self.q_network.state_dict())
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=learning_rate)
         self.gamma = gamma
-        self.epsilon = epsilon
+        self.epsilon_start = epsilon_start
+        self.epsilon = epsilon_start
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
+        self.decay_method = decay_method
+        self.total_steps = 0
         self.memory = deque(maxlen=10000)
 
-    def update_epsilon(self):
-        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+    def update_epsilon(self, episode=None):
+        if self.decay_method == 'exponential':
+            self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+        elif self.decay_method == 'linear':
+            self.epsilon = max(self.epsilon_min, self.epsilon_start - (self.epsilon_start - self.epsilon_min) * (self.total_steps / 1000000))
+        elif self.decay_method == 'cosine':
+            self.epsilon = self.epsilon_min + 0.5 * (self.epsilon_start - self.epsilon_min) * (1 + math.cos(math.pi * self.total_steps / 1000000))
+        elif self.decay_method == 'step':
+            if episode is not None and episode % 100 == 0:
+                self.epsilon = max(self.epsilon_min, self.epsilon * 0.5)
+        
+        self.total_steps += 1
+
 
     def act(self, state, sensor_reading):
         if random.random() < self.epsilon:
@@ -109,21 +123,24 @@ class IDQNAgent:
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.epsilon = checkpoint['epsilon']
 
-def train_idqn(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, epsilon_start=1.0, epsilon_min=0.01, epsilon_decay=0.995):
+def train_idqn(num_episodes=2000, batch_size=32, update_freq=50, save_freq=100, 
+               epsilon_start=1.0, epsilon_min=0.0, epsilon_decay=0.992, 
+               decay_method='exponential'):
     
     env = MultiAgentGridEnv(
         grid_file='grid_world.json',
-        coverage_radius=5,
-        max_steps_per_episode=40,
+        coverage_radius=2,
+        max_steps_per_episode=20,
         num_agents=4,
         initial_positions=[(1, 1), (2, 1), (1, 2), (2, 2)]
     )
 
-
-
     state_size = env.get_obs_size()
     action_size = env.get_total_actions()
-    agents = [IDQNAgent(state_size, action_size, epsilon=epsilon_start, epsilon_min=epsilon_min, epsilon_decay=epsilon_decay) for _ in range(env.num_agents)]
+    agents = [IDQNAgent(state_size, action_size, epsilon_start=epsilon_start, 
+                        epsilon_min=epsilon_min, epsilon_decay=epsilon_decay, 
+                        decay_method=decay_method) for _ in range(env.num_agents)]
+    
 
     os.makedirs('models', exist_ok=True)
     os.makedirs('logs', exist_ok=True)
@@ -156,8 +173,7 @@ def train_idqn(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, e
             for agent in agents:
                 agent.update_target_network()
 
-        for agent in agents:
-            agent.update_epsilon()
+        
 
         episode_rewards.append(total_reward)
         print(f"Episode {episode}, Total Reward: {total_reward}, Epsilon: {agents[0].epsilon}")
@@ -173,6 +189,9 @@ def train_idqn(num_episodes=800, batch_size=32, update_freq=50, save_freq=100, e
 
         with open('logs/rewards.txt', 'a') as f:
             f.write(f"{episode},{total_reward}\n")
+
+        for agent in agents:
+            agent.update_epsilon()
 
     for i, agent in enumerate(agents):
         agent.save(f'models/best_agent_{i}.pth')
@@ -208,7 +227,10 @@ def save_best_episode(initial_positions, best_episode_actions, best_episode_numb
 
 
 def save_final_positions(env, best_episode_actions, filename='idqn_final_positions.png'):
-    fig, ax = plt.subplots(figsize=(10, 10))
+    aspect_ratio = env.grid_width / env.grid_height
+    fig_width = 10
+    fig_height = fig_width / aspect_ratio
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     env.reset()
 
     for actions in best_episode_actions:
@@ -216,12 +238,9 @@ def save_final_positions(env, best_episode_actions, filename='idqn_final_positio
     
     env.render(ax, actions=best_episode_actions[-1], step=len(best_episode_actions)-1)
     plt.title("Final Positions")
-    plt.savefig(filename)
+    plt.savefig(filename, bbox_inches='tight')
     plt.close(fig)
     print(f"Final positions saved as {filename}")
-
-
-
 
 
 
@@ -252,8 +271,10 @@ def visualize_and_record_best_strategy(env, best_episode_actions, filename='idqn
 
 
 
-
 if __name__ == "__main__":
-    trained_agents, best_episode_actions, best_episode_number = train_idqn()
+    trained_agents, best_episode_actions, best_episode_number = train_idqn(
+        decay_method='exponential'  # or 'linear', 'cosine', 'step'
+    )
+
     print(f"Best episode: {best_episode_number}")
     
